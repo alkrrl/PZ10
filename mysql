@@ -1,0 +1,119 @@
+import mysql.connector
+
+
+def get_conn(user, pwd):
+    try:
+        return mysql.connector.connect(host='localhost', user=user, password=pwd, database='pz10')
+    except Exception as e:
+        print(f"Ошибка подключения {user}: {e}")
+        return None
+
+
+def run_query(conn, sql, desc):
+    if not conn: return
+    try:
+        cur = conn.cursor(dictionary=True)
+        cur.execute(sql)
+        if sql.strip().upper().startswith('SELECT'):
+            res = cur.fetchall()
+            print(f"  {desc}: OK ({len(res)} записей)")
+        else:
+            conn.commit()
+            print(f"  {desc}: OK")
+        cur.close()
+    except Exception as e:
+        print(f"  {desc}: Ошибка - {e}")
+
+
+def test_user(name, pwd, role):
+    print(f"\n{'-' * 20}\nТест: {role} - {name}")
+    conn = get_conn(name, pwd)
+    if not conn: return
+
+    # Списки запросов для каждой роли
+    if role == "Администратор":
+        reads = [
+            ("SELECT COUNT(*) FROM students", "SELECT из таблицы students"),
+            ("SELECT COUNT(*) FROM grades", "SELECT из таблицы grades"),
+            ("SELECT COUNT(*) FROM subjects", "SELECT из таблицы subjects"),
+            ("SELECT COUNT(*) FROM teachers", "SELECT из таблицы teachers"),
+            ("SELECT COUNT(*) FROM vw_student_grades", "SELECT из представления vw_student_grades"),
+            ("SELECT COUNT(*) FROM vw_student_groups", "SELECT из представления vw_student_groups"),
+            ("SELECT COUNT(*) FROM vw_subject_teachers", "SELECT из представления vw_subject_teachers")
+        ]
+        for q, d in reads: run_query(conn, q, d)
+
+        run_query(conn, "INSERT INTO students (full_name, group_id, birth_date) VALUES ('Test Admin', 1, CURDATE())",
+                  "INSERT в таблицу students")
+        run_query(conn, "UPDATE students SET full_name = 'Test Admin Updated' WHERE full_name = 'Test Admin'",
+                  "UPDATE в таблице students")
+        run_query(conn, "DELETE FROM students WHERE full_name = 'Test Admin Updated'", "DELETE из таблицы students")
+        run_query(conn, "CREATE TABLE test_admin (id INT)", "CREATE TABLE")
+        run_query(conn, "DROP TABLE test_admin", "DROP TABLE")
+
+    elif role == "Наблюдатель":
+        print("\n Разрешенные операции")
+        run_query(conn, "SELECT COUNT(*) FROM vw_student_grades", "SELECT из vw_student_grades")
+        run_query(conn, "SELECT * FROM vw_student_grades LIMIT 3", "SELECT (с лимитом) из vw_student_grades")
+
+        print("\n Запрещенные операции")
+        fails = [
+            ("SELECT COUNT(*) FROM vw_student_groups", "SELECT из vw_student_groups (должна быть ошибка 1142)"),
+            ("SELECT COUNT(*) FROM vw_subject_teachers", "SELECT из vw_subject_teachers (должна быть ошибка 1142)"),
+            ("SELECT COUNT(*) FROM students", "SELECT из таблицы students (должна быть ошибка 1142)"),
+            ("SELECT COUNT(*) FROM grades", "SELECT из таблицы grades (должна быть ошибка 1142)"),
+            ("INSERT INTO grades (student_id, subject_id, grade_value, grade_date) VALUES (1, 1, 5, CURDATE())",
+             "INSERT в grades (должна быть ошибка 1142)"),
+            ("UPDATE grades SET grade_value = 5 WHERE grade_id = 1", "UPDATE в grades (должна быть ошибка 1142)"),
+            ("DELETE FROM grades WHERE grade_id = 1", "DELETE из grades (должна быть ошибка 1142)")
+        ]
+        for q, d in fails: run_query(conn, q, d)
+
+    elif role == "Оператор":
+        print("\n Разрешенные операции")
+        views = [
+            ("SELECT COUNT(*) FROM vw_student_grades", "SELECT из vw_student_grades"),
+            ("SELECT COUNT(*) FROM vw_student_groups", "SELECT из vw_student_groups"),
+            ("SELECT COUNT(*) FROM vw_subject_teachers", "SELECT из vw_subject_teachers")
+        ]
+        for q, d in views: run_query(conn, q, d)
+
+        run_query(conn,
+                  "INSERT INTO grades (student_id, subject_id, grade_value, grade_date) VALUES (1, 1, 5, CURDATE())",
+                  "INSERT в таблицу grades")
+        run_query(conn,
+                  "UPDATE grades SET grade_value = 4 WHERE student_id = 1 AND subject_id = 1 AND grade_date = CURDATE()",
+                  "UPDATE в таблице grades")
+        run_query(conn, "DELETE FROM grades WHERE student_id = 1 AND subject_id = 1 AND grade_date = CURDATE()",
+                  "DELETE из таблицы grades")
+
+        print("\n Запрещенные операции")
+        fails = [
+            ("SELECT COUNT(*) FROM students", "SELECT из students (должна быть ошибка 1142)"),
+            ("SELECT COUNT(*) FROM subjects", "SELECT из subjects (должна быть ошибка 1142)"),
+            ("SELECT COUNT(*) FROM teachers", "SELECT из teachers (должна быть ошибка 1142)"),
+            ("INSERT INTO students (full_name, group_id) VALUES ('Test Op', 1)",
+             "INSERT в students (должна быть ошибка 1142)"),
+            ("UPDATE subjects SET subject_name = 'New' WHERE subject_id = 1",
+             "UPDATE в subjects (должна быть ошибка 1142)"),
+            ("CREATE TABLE test_op (id INT)", "CREATE TABLE (должна быть ошибка 1142)")
+        ]
+        for q, d in fails: run_query(conn, q, d)
+
+    conn.close()
+    print(f"\n Соединение с БД закрыто для пользователя {name}")
+
+
+def main():
+    users = [
+        {'name': 'svetlana_s', 'password': 'AdminPass123!', 'role': 'АДМИНИСТРАТОР'},
+        {'name': 'alena_k', 'password': 'Testik=56', 'role': 'НАБЛЮДАТЕЛЬ'},
+        {'name': 'alexey_prudnikov', 'password': 'OperatorPass123!', 'role': 'ОПЕРАТОР'}
+    ]
+    print("База данных: pz10\nХост: localhost:3306")
+    for u in users:
+        test_user(u['name'], u['password'], u['role'])
+
+
+if __name__ == "__main__":
+    main()
