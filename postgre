@@ -1,0 +1,39 @@
+import psycopg2
+users = [
+    ("svetlana_s", "AdminPass123!", "Администратор"),
+    ("alena_k", "Testik=56", "Наблюдатель"),
+    ("alexey_prudnikov", "OperatorPass123!", "Оператор"),
+]
+
+queries = [
+    "SELECT COUNT(*) FROM vw_student_grades",
+    "SELECT COUNT(*) FROM vw_student_groups",
+    "SELECT COUNT(*) FROM students",
+    "INSERT INTO grades (student_id, subject_id, grade_value, grade_date) VALUES (1, 1, 5, CURRENT_DATE)",
+    "CREATE TABLE test_table (id INTEGER)",
+]
+
+print("-" * 20)
+
+for u, p, role in users:
+    print(f"\nРоль: {role} ({u})")
+    try:
+        con = psycopg2.connect(host='localhost', port=5433, user=u, password=p, database='pz10_postgres')
+        cur = con.cursor()
+
+        for q in queries:
+            try:
+                cur.execute(q)
+                if q.strip().upper().startswith('SELECT'):
+                    res = cur.fetchall()
+                    print(f"  OK: {q[:30]}... ({len(res)} rows)")
+                else:
+                    con.commit()
+                    print(f"  OK: {q[:30]}...")
+            except Exception as e:
+                print(f"  Ошибка: {e}")
+
+        cur.close()
+        con.close()
+    except Exception as e:
+        print(f"  Ошибочное подключение: {e}")
